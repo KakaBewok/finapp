@@ -4,12 +4,15 @@
     "type": "module",
     "scripts": {
         "build": "vite build",
-        "dev": "vite"
+        "dev": "vite",
+        "serve": "php artisan serve",
+        "queue": "php artisan queue:listen",
+        "ocr": "cd python-ocr && uvicorn main:app --reload --port 8001",
+        "dev:all": "concurrently \"npm run dev\" \"npm run serve\" \"npm run queue\" \"npm run ocr\""
     },
     "dependencies": {
         "@tailwindcss/vite": "^4.1.11",
         "autoprefixer": "^10.4.20",
-        "concurrently": "^9.0.1",
         "laravel-vite-plugin": "^3.0.0",
         "tailwindcss": "^4.0.7",
         "vite": "^8.0.0"
@@ -18,5 +21,8 @@
         "@rollup/rollup-linux-x64-gnu": "4.9.5",
         "@tailwindcss/oxide-linux-x64-gnu": "^4.0.1",
         "lightningcss-linux-x64-gnu": "^1.29.1"
+    },
+    "devDependencies": {
+        "concurrently": "^9.2.1"
     }
 }

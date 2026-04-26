@@ -3,6 +3,7 @@
 namespace App\Livewire;
 
 use App\Models\Category;
+use Flux\Flux;
 use Illuminate\Support\Facades\Auth;
 use Livewire\Component;
 
@@ -73,10 +74,11 @@ class CategoryManager extends Component
         }
 
         $this->showModal = false;
+        $isEditing = (bool) $this->editingId;
         $this->resetForm();
 
         Flux::toast(
-            text: $this->editingId ? 'Kategori berhasil diperbarui.' : 'Kategori berhasil ditambahkan.',
+            text: $isEditing ? 'Kategori berhasil diperbarui.' : 'Kategori berhasil ditambahkan.',
             variant: 'success',
         );
     }

@@ -7,6 +7,7 @@ use App\Models\Transaction;
 use App\Jobs\ProcessReceiptJob;
 use App\Services\OCRService;
 use App\Services\ReceiptParserService;
+use Flux\Flux;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Storage;
 use Livewire\Component;

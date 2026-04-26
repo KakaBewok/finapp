@@ -5,6 +5,7 @@ namespace App\Livewire;
 use App\Models\Budget;
 use App\Models\Category;
 use App\Models\Transaction;
+use Flux\Flux;
 use Illuminate\Support\Facades\Auth;
 use Livewire\Component;
 
@@ -80,8 +81,9 @@ class BudgetManager extends Component
             Budget::create($data);
         }
         $this->showModal = false;
+        $isEditing = (bool) $this->editingId;
         $this->resetForm();
-        Flux::toast(text: $this->editingId ? 'Anggaran diperbarui.' : 'Anggaran ditambahkan.', variant: 'success');
+        Flux::toast(text: $isEditing ? 'Anggaran diperbarui.' : 'Anggaran ditambahkan.', variant: 'success');
     }
 
     public function confirmDelete(int $id): void

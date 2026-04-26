@@ -5,6 +5,7 @@ namespace App\Livewire;
 use App\Models\Category;
 use App\Models\Transaction;
 use App\Jobs\ProcessReceiptJob;
+use Flux\Flux;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Storage;
 use Livewire\Component;
@@ -153,10 +154,11 @@ class TransactionManager extends Component
         }
 
         $this->showModal = false;
+        $isEditing = (bool) $this->editingId;
         $this->resetForm();
 
         Flux::toast(
-            text: $this->editingId ? 'Transaksi berhasil diperbarui.' : 'Transaksi berhasil ditambahkan.',
+            text: $isEditing ? 'Transaksi berhasil diperbarui.' : 'Transaksi berhasil ditambahkan.',
             variant: 'success',
         );
     }

@@ -15,16 +15,25 @@ class ReceiptParserService
      */
     public function parse(string $rawText): array
     {
-        return [
+        Log::info('ReceiptParser: parsing OCR text', ['text' => $rawText]);
+
+        $result = [
             'merchant' => $this->extractMerchant($rawText),
             'amount' => $this->extractTotal($rawText),
             'date' => $this->extractDate($rawText),
         ];
+
+        Log::info('ReceiptParser: parsed result', $result);
+
+        return $result;
     }
 
     /**
      * Extract merchant name from receipt text.
-     * Strategy: first non-empty line, or first line with mostly uppercase text.
+     * Strategy:
+     * 1. Check known merchants in first 5 lines
+     * 2. Find the first prominent line (header) — usually the store name
+     *    at the very top, often uppercase or title-case
      */
     protected function extractMerchant(string $text): ?string
     {
@@ -57,30 +66,97 @@ class ReceiptParserService
             }
         }
 
-        // Fallback: first line that looks like a name (mostly letters, > 3 chars)
-        foreach (array_slice($lines, 0, 3) as $line) {
-            $cleaned = preg_replace('/[^a-zA-Z\s]/', '', $line);
-            if (strlen(trim($cleaned)) > 3) {
-                return trim($line);
+        // Lines that indicate non-merchant content (skip these)
+        $skipPatterns = [
+            '/^\d+$/',                              // Pure numbers
+            '/^[-=_*\.]{3,}$/',                     // Separator lines
+            '/^(Jl|Jln|Jalan)\b/i',                // Address lines
+            '/^(RT|RW|Kel|Kec|Kota|Kab|Prov)/i',  // Address details
+            '/^(No|Telp|Tel|HP|Fax|Phone)/i',      // Phone/fax
+            '/^(NPWP|NIB|SIUP)/i',                 // Business IDs
+            '/^\d{1,2}[\/-]\d{1,2}[\/-]\d{2,4}/',  // Dates
+            '/^(Kasir|Cashier|Waktu|Tanggal|Tgl)/i', // Transaction metadata
+            '/^(Item|Qty|Harga|Jumlah|Subtotal)/i',   // Item table headers
+            '/^(Total|Grand|Bayar|Pembayaran)/i',      // Totals
+            '/Indonesia$/i',                            // Country name at end of address
+        ];
+
+        // Look at first 5 lines for the store/merchant name
+        // The merchant name is typically the FIRST prominent text line
+        foreach (array_slice($lines, 0, 5) as $line) {
+            $cleaned = trim($line);
+
+            // Skip very short lines
+            if (mb_strlen($cleaned) < 3) {
+                continue;
+            }
+
+            // Skip lines matching non-merchant patterns
+            $skip = false;
+            foreach ($skipPatterns as $pattern) {
+                if (preg_match($pattern, $cleaned)) {
+                    $skip = true;
+                    break;
+                }
+            }
+            if ($skip) {
+                continue;
+            }
+
+            // Check if line has enough letter content (not just numbers/symbols)
+            $letterCount = preg_match_all('/[a-zA-Z]/', $cleaned);
+            $totalLen = mb_strlen($cleaned);
+            if ($totalLen > 0 && ($letterCount / $totalLen) > 0.4) {
+                // This looks like a merchant name — clean it up
+                // Remove trailing/leading special chars
+                $merchantName = preg_replace('/^[^a-zA-Z0-9]+|[^a-zA-Z0-9]+$/', '', $cleaned);
+                if (mb_strlen($merchantName) >= 3) {
+                    return $merchantName;
+                }
             }
         }
 
+        // Final fallback: first non-empty line
         return trim($lines[0]) ?: null;
     }
 
     /**
      * Extract total amount from receipt text.
      * Handles Indonesian number formats: 45.000, 45,000, Rp 45.000, etc.
+     *
+     * Strategy:
+     * 1. Look for explicit "Grand Total" / "Total" lines
+     * 2. Look for "Rp" prefixed amounts
+     * 3. Fallback to largest amount on receipt
      */
     protected function extractTotal(string $text): ?float
     {
         $lines = explode("\n", $text);
         $totalAmount = null;
 
-        // Patterns for total line (Indonesian receipts)
+        // Priority 1: Grand Total / Total Bayar lines
+        $grandTotalPatterns = [
+            '/(?:GRAND\s*TOTAL|TOTAL\s*BAYAR|TOTAL\s*PEMBAYARAN|TOTAL\s*BELANJA)\s*[:\.\s]*(?:Rp\.?\s*)?([0-9][0-9.,\s]*)/i',
+        ];
+
+        foreach ($lines as $line) {
+            foreach ($grandTotalPatterns as $pattern) {
+                if (preg_match($pattern, $line, $matches)) {
+                    $amount = $this->parseIndonesianAmount($matches[1]);
+                    if ($amount !== null && $amount > 0) {
+                        Log::info('ReceiptParser: found grand total', ['line' => trim($line), 'amount' => $amount]);
+                        return $amount; // Grand total is definitive
+                    }
+                }
+            }
+        }
+
+        // Priority 2: Regular total lines
         $totalPatterns = [
-            '/(?:TOTAL|GRAND\s*TOTAL|JUMLAH|TTL|BAYAR|PEMBAYARAN|TUNAI|CASH|DEBIT|CREDIT)\s*[:\.]?\s*(?:Rp\.?\s*)?([0-9][0-9.,]*)/i',
-            '/(?:Rp\.?\s*)([0-9][0-9.,]*)\s*(?:TOTAL|GRAND|JUMLAH|BAYAR)/i',
+            // TOTAL / JUMLAH / BAYAR followed by optional Rp and amount
+            '/(?:TOTAL|JUMLAH|TTL|BAYAR|PEMBAYARAN|TUNAI|CASH|DEBIT|CREDIT|KREDIT)\s*[:\.\s]*(?:Rp\.?\s*)?([0-9][0-9.,\s]*)/i',
+            // Rp followed by amount after a keyword
+            '/(?:TOTAL|JUMLAH|BAYAR)\s+Rp\.?\s*([0-9][0-9.,\s]*)/i',
         ];
 
         foreach ($lines as $line) {
@@ -88,7 +164,7 @@ class ReceiptParserService
                 if (preg_match($pattern, $line, $matches)) {
                     $amount = $this->parseIndonesianAmount($matches[1]);
                     if ($amount !== null && $amount > 0) {
-                        // Take the largest "total" found (often the grand total)
+                        // Take the largest "total" found
                         if ($totalAmount === null || $amount > $totalAmount) {
                             $totalAmount = $amount;
                         }
@@ -97,19 +173,34 @@ class ReceiptParserService
             }
         }
 
-        // Fallback: find the largest number on the receipt (likely total)
-        if ($totalAmount === null) {
-            $allAmounts = [];
-            preg_match_all('/(?:Rp\.?\s*)?(\d{1,3}(?:[.,]\d{3})+|\d{4,})/i', $text, $allMatches);
-            foreach ($allMatches[1] as $match) {
-                $amount = $this->parseIndonesianAmount($match);
-                if ($amount !== null && $amount >= 100) {
-                    $allAmounts[] = $amount;
-                }
+        if ($totalAmount !== null) {
+            return $totalAmount;
+        }
+
+        // Priority 3: Lines with "Rp" prefix — find all and take the largest
+        $rpAmounts = [];
+        preg_match_all('/Rp\.?\s*([0-9][0-9.,\s]*)/i', $text, $rpMatches);
+        foreach ($rpMatches[1] as $match) {
+            $amount = $this->parseIndonesianAmount($match);
+            if ($amount !== null && $amount >= 100) {
+                $rpAmounts[] = $amount;
             }
-            if (!empty($allAmounts)) {
-                $totalAmount = max($allAmounts);
+        }
+        if (!empty($rpAmounts)) {
+            return max($rpAmounts);
+        }
+
+        // Priority 4: Fallback — find the largest formatted number (x.xxx or x,xxx patterns)
+        $allAmounts = [];
+        preg_match_all('/(\d{1,3}(?:[.,]\d{3})+|\d{4,})/', $text, $allMatches);
+        foreach ($allMatches[1] as $match) {
+            $amount = $this->parseIndonesianAmount($match);
+            if ($amount !== null && $amount >= 100) {
+                $allAmounts[] = $amount;
             }
+        }
+        if (!empty($allAmounts)) {
+            return max($allAmounts);
         }
 
         return $totalAmount;
@@ -119,6 +210,7 @@ class ReceiptParserService
      * Parse Indonesian number format to float.
      * Indonesian uses . as thousands separator and , as decimal.
      * Examples: "45.000" => 45000, "1.250.000" => 1250000, "45,000" => 45000
+     *           "36.800" => 36800, "36 800" => 36800, "36. 800" => 36800
      */
     protected function parseIndonesianAmount(string $amount): ?float
     {
@@ -126,18 +218,34 @@ class ReceiptParserService
 
         // Remove currency prefix
         $amount = preg_replace('/^Rp\.?\s*/i', '', $amount);
+        $amount = trim($amount);
 
-        // If it looks like x.xxx or x.xxx.xxx (Indonesian thousands separator)
+        // Normalize OCR artifacts: remove spaces around dots/commas between digits
+        // "36. 800" -> "36.800", "36 .800" -> "36.800", "36 , 800" -> "36,800"
+        $amount = preg_replace('/(\d)\s*\.\s*(\d)/', '$1.$2', $amount);
+        $amount = preg_replace('/(\d)\s*,\s*(\d)/', '$1,$2', $amount);
+
+        // Remove remaining spaces between digits: "36 800" -> "36800"
+        $amount = preg_replace('/(\d)\s+(\d)/', '$1$2', $amount);
+
+        // If it looks like x.xxx or x.xxx.xxx (Indonesian thousands separator with 3-digit groups)
         if (preg_match('/^\d{1,3}(\.\d{3})+$/', $amount)) {
             return (float) str_replace('.', '', $amount);
         }
 
-        // If it looks like x,xxx or x,xxx,xxx (alternative thousands separator)
+        // If it looks like x,xxx or x,xxx,xxx (alternative thousands separator with 3-digit groups)
         if (preg_match('/^\d{1,3}(,\d{3})+$/', $amount)) {
             return (float) str_replace(',', '', $amount);
         }
 
-        // Plain number
+        // Mixed separators: e.g. "1.250,00" (dots for thousands, comma for decimal)
+        if (preg_match('/^\d{1,3}(?:\.\d{3})+,\d{2}$/', $amount)) {
+            $amount = str_replace('.', '', $amount);
+            $amount = str_replace(',', '.', $amount);
+            return (float) $amount;
+        }
+
+        // Plain number with no separators
         $cleaned = preg_replace('/[^0-9]/', '', $amount);
         if ($cleaned !== '') {
             return (float) $cleaned;
@@ -166,41 +274,42 @@ class ReceiptParserService
         ];
 
         $datePatterns = [
+            // DD Month YYYY (Indonesian) — highest priority for Indonesian receipts
+            '(\d{1,2})\s+(januari|februari|maret|april|mei|juni|juli|agustus|september|oktober|november|desember|jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec|agt|okt|des|nop)\s+(\d{4})',
             // DD/MM/YYYY or DD-MM-YYYY
-            '/(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/',
-            // DD/MM/YY or DD-MM-YY
-            '/(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2})(?!\d)/',
+            '(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})',
             // YYYY-MM-DD (ISO format)
-            '/(\d{4})-(\d{1,2})-(\d{1,2})/',
-            // DD Month YYYY (Indonesian)
-            '/(\d{1,2})\s+(januari|februari|maret|april|mei|juni|juli|agustus|september|oktober|november|desember|jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec|agt|okt|des|nop)\s+(\d{4})/i',
+            '(\d{4})-(\d{1,2})-(\d{1,2})',
+            // DD/MM/YY or DD-MM-YY
+            '(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2})(?!\d)',
         ];
 
         foreach ($datePatterns as $index => $pattern) {
-            if (preg_match($pattern, $text, $matches)) {
+            if (preg_match('/' . $pattern . '/i', $text, $matches)) {
                 try {
-                    if ($index === 2) {
-                        // YYYY-MM-DD format
-                        return Carbon::createFromFormat('Y-m-d', "{$matches[1]}-{$matches[2]}-{$matches[3]}")->format('Y-m-d');
-                    } elseif ($index === 3) {
+                    if ($index === 0) {
                         // DD Month YYYY format
                         $monthNum = $monthMap[strtolower($matches[2])] ?? null;
                         if ($monthNum) {
                             $day = str_pad($matches[1], 2, '0', STR_PAD_LEFT);
-                            return Carbon::createFromFormat('Y-m-d', "{$matches[3]}-{$monthNum}-{$day}")->format('Y-m-d');
+                            $year = $matches[3];
+                            return Carbon::createFromFormat('Y-m-d', "{$year}-{$monthNum}-{$day}")->format('Y-m-d');
                         }
                     } elseif ($index === 1) {
+                        // DD/MM/YYYY format
+                        $day = str_pad($matches[1], 2, '0', STR_PAD_LEFT);
+                        $month = str_pad($matches[2], 2, '0', STR_PAD_LEFT);
+                        return Carbon::createFromFormat('Y-m-d', "{$matches[3]}-{$month}-{$day}")->format('Y-m-d');
+                    } elseif ($index === 2) {
+                        // YYYY-MM-DD format
+                        return Carbon::createFromFormat('Y-m-d', "{$matches[1]}-{$matches[2]}-{$matches[3]}")->format('Y-m-d');
+                    } elseif ($index === 3) {
                         // DD/MM/YY format
                         $year = (int) $matches[3];
                         $year = $year < 50 ? 2000 + $year : 1900 + $year;
                         $day = str_pad($matches[1], 2, '0', STR_PAD_LEFT);
                         $month = str_pad($matches[2], 2, '0', STR_PAD_LEFT);
                         return Carbon::createFromFormat('Y-m-d', "{$year}-{$month}-{$day}")->format('Y-m-d');
-                    } else {
-                        // DD/MM/YYYY format
-                        $day = str_pad($matches[1], 2, '0', STR_PAD_LEFT);
-                        $month = str_pad($matches[2], 2, '0', STR_PAD_LEFT);
-                        return Carbon::createFromFormat('Y-m-d', "{$matches[3]}-{$month}-{$day}")->format('Y-m-d');
                     }
                 } catch (\Exception $e) {
                     Log::warning('Failed to parse date from receipt', [
