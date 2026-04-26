@@ -15,6 +15,9 @@ class BudgetManager extends Component
     public bool $showDeleteModal = false;
     public ?int $editingId = null;
     public ?int $deletingId = null;
+    public array $selectedBudgets = [];
+    public bool $selectAll = false;
+    public bool $showBulkDeleteModal = false;
     public ?int $category_id = null;
     public string $amount = '';
     public int $month;
@@ -97,7 +100,44 @@ class BudgetManager extends Component
         Budget::where('user_id', Auth::id())->where('id', $this->deletingId)->delete();
         $this->showDeleteModal = false;
         $this->deletingId = null;
-        Flux::toast(text: 'Anggaran dihapus.', variant: 'success');
+        Flux::toast(text: __('Anggaran dihapus.'), variant: 'success');
+    }
+
+    public function updatedSelectAll($value): void
+    {
+        if ($value) {
+            $this->selectedBudgets = Budget::where('user_id', Auth::id())
+                ->where('month', $this->viewMonth)
+                ->where('year', $this->viewYear)
+                ->pluck('id')
+                ->map(fn($id) => (string)$id)
+                ->toArray();
+        } else {
+            $this->selectedBudgets = [];
+        }
+    }
+
+    public function confirmBulkDelete(): void
+    {
+        if (count($this->selectedBudgets) > 0) {
+            $this->showBulkDeleteModal = true;
+        }
+    }
+
+    public function bulkDelete(): void
+    {
+        if (empty($this->selectedBudgets)) {
+            return;
+        }
+
+        Budget::where('user_id', Auth::id())
+            ->whereIn('id', $this->selectedBudgets)
+            ->delete();
+
+        $this->selectedBudgets = [];
+        $this->showBulkDeleteModal = false;
+
+        Flux::toast(text: __('Anggaran yang dipilih berhasil dihapus.'), variant: 'success');
     }
 
     public function previousMonth(): void

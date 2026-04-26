@@ -13,6 +13,8 @@ class CategoryManager extends Component
     public bool $showDeleteModal = false;
     public ?int $editingId = null;
     public ?int $deletingId = null;
+    public array $selectedCategories = [];
+    public bool $showBulkDeleteModal = false;
 
     public string $name = '';
     public string $icon = '📦';
@@ -103,7 +105,31 @@ class CategoryManager extends Component
         $this->showDeleteModal = false;
         $this->deletingId = null;
 
-        Flux::toast(text: 'Kategori berhasil dihapus.', variant: 'success');
+        Flux::toast(text: __('Kategori berhasil dihapus.'), variant: 'success');
+    }
+
+    public function confirmBulkDelete(): void
+    {
+        if (count($this->selectedCategories) > 0) {
+            $this->showBulkDeleteModal = true;
+        }
+    }
+
+    public function bulkDelete(): void
+    {
+        if (empty($this->selectedCategories)) {
+            return;
+        }
+
+        // Only delete categories that belong to the user (not system categories)
+        Category::where('user_id', Auth::id())
+            ->whereIn('id', $this->selectedCategories)
+            ->delete();
+
+        $this->selectedCategories = [];
+        $this->showBulkDeleteModal = false;
+
+        Flux::toast(text: __('Kategori yang dipilih berhasil dihapus.'), variant: 'success');
     }
 
     protected function resetForm(): void

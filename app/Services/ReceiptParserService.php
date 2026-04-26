@@ -44,14 +44,24 @@ class ReceiptParserService
             return null;
         }
 
-        // Known Indonesian retailers
+        // Known Indonesian retailers / F&B brands
         $knownMerchants = [
+            // Convenience & retail
             'INDOMARET', 'ALFAMART', 'ALFAMIDI', 'LAWSON', 'CIRCLE K',
             'FAMILY MART', 'FAMILYMART', 'SUPERINDO', 'GIANT', 'HYPERMART',
             'TRANSMART', 'CARREFOUR', 'LOTTEMART', 'LOTTE MART',
             'MATAHARI', 'RAMAYANA', 'ACE HARDWARE', 'MINISO',
+            // Fast food & restaurants
             'MCDONALD', 'MCDONALDS', 'KFC', 'BURGER KING', 'PIZZA HUT',
             'STARBUCKS', 'JCOFFEE', 'JANJI JIWA', 'KOPI KENANGAN',
+            'J.CO', 'JCO', 'J CO', 'JCODONUTS', 'BREADTALK', 'ROTI O',
+            'CHATIME', 'GULU GULU', 'HOKBEN', 'HOKA HOKA', 'YOSHINOYA',
+            'PEPPER LUNCH', 'MARUGAME', 'ICHIBAN SUSHI', 'SUSHI TEI',
+            'SOLARIA', 'ES TELER 77', 'BAKMI GM', 'DUNKIN', 'DUNKIN DONUTS',
+            'RICHEESE', 'MIXUE', 'HAUS', 'TEGUK', 'FORE COFFEE',
+            'TOMORO', 'TOMORO COFFEE', 'FLASH COFFEE', 'POINT COFFEE',
+            'EXCELSO', 'MAXX COFFEE', 'ANOMALI COFFEE',
+            // E-commerce & digital
             'TOKOPEDIA', 'SHOPEE', 'BUKALAPAK', 'LAZADA', 'BLIBLI',
             'GRAB', 'GOJEK', 'GOPAY', 'OVO', 'DANA', 'LINKAJA',
         ];
@@ -81,9 +91,27 @@ class ReceiptParserService
             '/Indonesia$/i',                            // Country name at end of address
         ];
 
-        // Look at first 5 lines for the store/merchant name
-        // The merchant name is typically the FIRST prominent text line
-        foreach (array_slice($lines, 0, 5) as $line) {
+        // Look at the FIRST LINE specifically — it's almost always the brand name
+        // on Indonesian receipts (even if short like "JCO" or "KFC")
+        $firstLine = trim($lines[0] ?? '');
+        $firstLineCleaned = preg_replace('/^[^a-zA-Z0-9]+|[^a-zA-Z0-9.]+$/', '', $firstLine);
+        // Accept first line if it has at least 2 letters and is mostly text
+        $firstLineLetters = preg_match_all('/[a-zA-Z]/', $firstLineCleaned);
+        if ($firstLineLetters >= 2 && mb_strlen($firstLineCleaned) >= 2) {
+            $isSkip = false;
+            foreach ($skipPatterns as $pattern) {
+                if (preg_match($pattern, $firstLineCleaned)) {
+                    $isSkip = true;
+                    break;
+                }
+            }
+            if (!$isSkip) {
+                return $firstLineCleaned;
+            }
+        }
+
+        // Fallback: look at lines 2-5 for a prominent text line
+        foreach (array_slice($lines, 1, 4) as $line) {
             $cleaned = trim($line);
 
             // Skip very short lines
@@ -108,7 +136,6 @@ class ReceiptParserService
             $totalLen = mb_strlen($cleaned);
             if ($totalLen > 0 && ($letterCount / $totalLen) > 0.4) {
                 // This looks like a merchant name — clean it up
-                // Remove trailing/leading special chars
                 $merchantName = preg_replace('/^[^a-zA-Z0-9]+|[^a-zA-Z0-9]+$/', '', $cleaned);
                 if (mb_strlen($merchantName) >= 3) {
                     return $merchantName;
@@ -136,7 +163,7 @@ class ReceiptParserService
 
         // Priority 1: Grand Total / Total Bayar lines
         $grandTotalPatterns = [
-            '/(?:GRAND\s*TOTAL|TOTAL\s*BAYAR|TOTAL\s*PEMBAYARAN|TOTAL\s*BELANJA)\s*[:\.\s]*(?:Rp\.?\s*)?([0-9][0-9.,\s]*)/i',
+            '/(?:GRAND\s*TOTAL|TOTAL\s*BAYAR|TOTAL\s*PEMBAYARAN|TOTAL\s*BELANJA)\s*[:\.\s]*(?:(?:Rp|IDR)\.?\s*)?([0-9][0-9.,\s]*)/i',
         ];
 
         foreach ($lines as $line) {
@@ -151,12 +178,37 @@ class ReceiptParserService
             }
         }
 
-        // Priority 2: Regular total lines
+        // Priority 2: Payment / Subtotal / Total lines (common on POS receipts)
+        $paymentPatterns = [
+            // "Payment" line — very common on POS receipts like JCO, Starbucks, etc.
+            '/(?:PAYMENT|PEMBAYARAN)\s*[:\.\s]*(?:(?:Rp|IDR)\.?\s*)?([0-9][0-9.,\s]*)/i',
+            // "Subtotal" line
+            '/(?:SUBTOTAL|SUB\s*TOTAL)\s*[:\.\s]*(?:(?:Rp|IDR)\.?\s*)?([0-9][0-9.,\s]*)/i',
+        ];
+
+        foreach ($lines as $line) {
+            foreach ($paymentPatterns as $pattern) {
+                if (preg_match($pattern, $line, $matches)) {
+                    $amount = $this->parseIndonesianAmount($matches[1]);
+                    if ($amount !== null && $amount > 0) {
+                        Log::info('ReceiptParser: found payment/subtotal', ['line' => trim($line), 'amount' => $amount]);
+                        // Prefer the last occurrence (Payment usually comes after Subtotal)
+                        $totalAmount = $amount;
+                    }
+                }
+            }
+        }
+
+        if ($totalAmount !== null) {
+            return $totalAmount;
+        }
+
+        // Priority 3: Regular total lines
         $totalPatterns = [
-            // TOTAL / JUMLAH / BAYAR followed by optional Rp and amount
-            '/(?:TOTAL|JUMLAH|TTL|BAYAR|PEMBAYARAN|TUNAI|CASH|DEBIT|CREDIT|KREDIT)\s*[:\.\s]*(?:Rp\.?\s*)?([0-9][0-9.,\s]*)/i',
-            // Rp followed by amount after a keyword
-            '/(?:TOTAL|JUMLAH|BAYAR)\s+Rp\.?\s*([0-9][0-9.,\s]*)/i',
+            // TOTAL / JUMLAH / BAYAR followed by optional Rp/IDR and amount
+            '/(?:TOTAL|JUMLAH|TTL|BAYAR|TUNAI|CASH|DEBIT|CREDIT|KREDIT)\s*[:\.\s]*(?:(?:Rp|IDR)\.?\s*)?([0-9][0-9.,\s]*)/i',
+            // Rp/IDR followed by amount after a keyword
+            '/(?:TOTAL|JUMLAH|BAYAR)\s+(?:Rp|IDR)\.?\s*([0-9][0-9.,\s]*)/i',
         ];
 
         foreach ($lines as $line) {
@@ -177,9 +229,9 @@ class ReceiptParserService
             return $totalAmount;
         }
 
-        // Priority 3: Lines with "Rp" prefix — find all and take the largest
+        // Priority 4: Lines with "Rp" or "IDR" prefix — find all and take the largest
         $rpAmounts = [];
-        preg_match_all('/Rp\.?\s*([0-9][0-9.,\s]*)/i', $text, $rpMatches);
+        preg_match_all('/(?:Rp|IDR)\.?\s*([0-9][0-9.,\s]*)/i', $text, $rpMatches);
         foreach ($rpMatches[1] as $match) {
             $amount = $this->parseIndonesianAmount($match);
             if ($amount !== null && $amount >= 100) {
@@ -190,9 +242,10 @@ class ReceiptParserService
             return max($rpAmounts);
         }
 
-        // Priority 4: Fallback — find the largest formatted number (x.xxx or x,xxx patterns)
+        // Priority 5: Fallback — find the largest formatted number (x.xxx or x,xxx patterns)
+        // Exclude numbers that look like IDs/reference numbers (more than 6 consecutive digits without separators)
         $allAmounts = [];
-        preg_match_all('/(\d{1,3}(?:[.,]\d{3})+|\d{4,})/', $text, $allMatches);
+        preg_match_all('/(\d{1,3}(?:[.,]\d{3})+)/', $text, $allMatches);
         foreach ($allMatches[1] as $match) {
             $amount = $this->parseIndonesianAmount($match);
             if ($amount !== null && $amount >= 100) {
@@ -216,8 +269,8 @@ class ReceiptParserService
     {
         $amount = trim($amount);
 
-        // Remove currency prefix
-        $amount = preg_replace('/^Rp\.?\s*/i', '', $amount);
+        // Remove currency prefix (Rp or IDR)
+        $amount = preg_replace('/^(?:Rp|IDR)\.?\s*/i', '', $amount);
         $amount = trim($amount);
 
         // Normalize OCR artifacts: remove spaces around dots/commas between digits
@@ -276,6 +329,8 @@ class ReceiptParserService
         $datePatterns = [
             // DD Month YYYY (Indonesian) — highest priority for Indonesian receipts
             '(\d{1,2})\s+(januari|februari|maret|april|mei|juni|juli|agustus|september|oktober|november|desember|jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec|agt|okt|des|nop)\s+(\d{4})',
+            // DD Mon'YY — POS format e.g. "26 Apr'26"
+            '(\d{1,2})\s+(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec|agt|okt|des|nop)[\x27\x60]?(\d{2})(?!\d)',
             // DD/MM/YYYY or DD-MM-YYYY
             '(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})',
             // YYYY-MM-DD (ISO format)
@@ -296,14 +351,23 @@ class ReceiptParserService
                             return Carbon::createFromFormat('Y-m-d', "{$year}-{$monthNum}-{$day}")->format('Y-m-d');
                         }
                     } elseif ($index === 1) {
+                        // DD Mon'YY format (e.g. "26 Apr'26")
+                        $monthNum = $monthMap[strtolower($matches[2])] ?? null;
+                        if ($monthNum) {
+                            $day = str_pad($matches[1], 2, '0', STR_PAD_LEFT);
+                            $yr = (int) $matches[3];
+                            $year = $yr < 50 ? 2000 + $yr : 1900 + $yr;
+                            return Carbon::createFromFormat('Y-m-d', "{$year}-{$monthNum}-{$day}")->format('Y-m-d');
+                        }
+                    } elseif ($index === 2) {
                         // DD/MM/YYYY format
                         $day = str_pad($matches[1], 2, '0', STR_PAD_LEFT);
                         $month = str_pad($matches[2], 2, '0', STR_PAD_LEFT);
                         return Carbon::createFromFormat('Y-m-d', "{$matches[3]}-{$month}-{$day}")->format('Y-m-d');
-                    } elseif ($index === 2) {
+                    } elseif ($index === 3) {
                         // YYYY-MM-DD format
                         return Carbon::createFromFormat('Y-m-d', "{$matches[1]}-{$matches[2]}-{$matches[3]}")->format('Y-m-d');
-                    } elseif ($index === 3) {
+                    } elseif ($index === 4) {
                         // DD/MM/YY format
                         $year = (int) $matches[3];
                         $year = $year < 50 ? 2000 + $year : 1900 + $year;

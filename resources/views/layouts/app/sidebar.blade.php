@@ -33,6 +33,10 @@
                     <flux:sidebar.item icon="tag" :href="route('categories')" :current="request()->routeIs('categories')" wire:navigate>
                         {{ __('Kategori') }}
                     </flux:sidebar.item>
+
+                    <flux:sidebar.item icon="document-text" :href="route('reports')" :current="request()->routeIs('reports')" wire:navigate>
+                        {{ __('Laporan') }}
+                    </flux:sidebar.item>
                 </flux:sidebar.group>
             </flux:sidebar.nav>
 
@@ -69,6 +73,16 @@
                             </div>
                         </div>
                     </flux:menu.radio.group>
+
+                    <flux:menu.separator />
+
+                    <div class="px-3 py-1.5 text-xs font-semibold tracking-wider text-zinc-500 uppercase">{{ __('Language') }}</div>
+                    <flux:menu.item :href="route('lang.switch', 'id')" icon="globe-alt" wire:navigate.off>
+                        Bahasa Indonesia {{ app()->getLocale() === 'id' ? '✓' : '' }}
+                    </flux:menu.item>
+                    <flux:menu.item :href="route('lang.switch', 'en')" icon="globe-alt" wire:navigate.off>
+                        English {{ app()->getLocale() === 'en' ? '✓' : '' }}
+                    </flux:menu.item>
 
                     <flux:menu.separator />
 

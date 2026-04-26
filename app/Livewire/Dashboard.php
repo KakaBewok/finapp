@@ -68,12 +68,23 @@ class Dashboard extends Component
             });
     }
 
-    public function getTopCategoriesProperty()
+    public function getTopExpenseCategoriesProperty()
     {
-        return Transaction::where('user_id', Auth::id())
+        return $this->getTransactionsQuery()
             ->where('type', 'expense')
-            ->whereMonth('transaction_date', now()->month)
-            ->whereYear('transaction_date', now()->year)
+            ->whereNotNull('category_id')
+            ->selectRaw('category_id, SUM(amount) as total')
+            ->groupBy('category_id')
+            ->orderByDesc('total')
+            ->limit(5)
+            ->with('category')
+            ->get();
+    }
+
+    public function getTopIncomeCategoriesProperty()
+    {
+        return $this->getTransactionsQuery()
+            ->where('type', 'income')
             ->whereNotNull('category_id')
             ->selectRaw('category_id, SUM(amount) as total')
             ->groupBy('category_id')

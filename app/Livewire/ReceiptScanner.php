@@ -24,6 +24,10 @@ class ReceiptScanner extends Component
     public ?string $errorMessage = null;
     public bool $showResultModal = false;
 
+    // Camera capture state
+    public bool $cameraMode = false;
+    public ?string $cameraPreviewUrl = null;
+
     // Parsed fields
     public ?string $parsedMerchant = null;
     public string $parsedAmount = '';
@@ -46,17 +50,76 @@ class ReceiptScanner extends Component
             $this->previewUrl = $this->receiptImage->temporaryUrl();
             $this->errorMessage = null;
             $this->ocrText = null;
+            $this->cameraMode = false;
+            $this->cameraPreviewUrl = null;
         }
     }
 
+    /**
+     * Receive a base64-encoded camera capture from JavaScript.
+     */
+    public function uploadCameraCapture(string $base64Data): void
+    {
+        try {
+            // Strip the data URI prefix (e.g. "data:image/png;base64,")
+            if (str_contains($base64Data, ',')) {
+                $base64Data = substr($base64Data, strpos($base64Data, ',') + 1);
+            }
+
+            $imageData = base64_decode($base64Data);
+            if ($imageData === false) {
+                $this->errorMessage = __('Gagal memproses gambar dari kamera.');
+                return;
+            }
+
+            // Enforce the same 5MB limit as file uploads
+            if (strlen($imageData) > 5 * 1024 * 1024) {
+                $this->errorMessage = __('Gambar terlalu besar. Maksimum 5MB.');
+                return;
+            }
+
+            $filename = 'receipts/camera_' . uniqid() . '.jpg';
+            Storage::disk('public')->put($filename, $imageData);
+
+            // Set preview so the user sees the captured image
+            $this->cameraPreviewUrl = Storage::url($filename);
+            $this->previewUrl = $this->cameraPreviewUrl;
+            session()->put('camera_receipt_path', $filename);
+
+            // Exit camera mode to show the preview + action buttons
+            $this->cameraMode = false;
+            $this->errorMessage = null;
+            $this->ocrText = null;
+        } catch (\Exception $e) {
+            $this->errorMessage = __('Gagal memproses gambar dari kamera.') . ' ' . $e->getMessage();
+        }
+    }
+
+    /**
+     * Process receipt – works for both file-upload and camera-capture flows.
+     */
     public function processReceipt(): void
     {
-        $this->validate();
         $this->isProcessing = true;
         $this->errorMessage = null;
 
         try {
-            $path = $this->receiptImage->store('receipts', 'public');
+            // Determine the stored path depending on capture method
+            $cameraPath = session()->get('camera_receipt_path');
+
+            if ($cameraPath && Storage::disk('public')->exists($cameraPath)) {
+                // Camera capture – file already stored
+                $path = $cameraPath;
+            } elseif ($this->receiptImage) {
+                // Normal file upload via Livewire
+                $this->validate();
+                $path = $this->receiptImage->store('receipts', 'public');
+            } else {
+                $this->errorMessage = __('Tidak ada gambar untuk diproses.');
+                $this->isProcessing = false;
+                return;
+            }
+
             $fullPath = Storage::disk('public')->path($path);
 
             $ocr = new OCRService();
@@ -80,6 +143,7 @@ class ReceiptScanner extends Component
             // Store the path for later save
             $this->previewUrl = Storage::url($path);
             session()->put('receipt_path', $path);
+            session()->forget('camera_receipt_path');
 
             $this->showResultModal = true;
         } catch (\Exception $e) {
@@ -113,14 +177,51 @@ class ReceiptScanner extends Component
         ]);
 
         session()->forget('receipt_path');
+        session()->forget('camera_receipt_path');
         $this->resetScanner();
         $this->showResultModal = false;
 
-        Flux::toast(text: 'Transaksi dari struk berhasil disimpan!', variant: 'success');
+        Flux::toast(text: __('Transaksi dari struk berhasil disimpan!'), variant: 'success');
+    }
+
+    public function openCamera(): void
+    {
+        $this->cameraMode = true;
+        $this->receiptImage = null;
+        $this->previewUrl = null;
+        $this->cameraPreviewUrl = null;
+        $this->errorMessage = null;
+        $this->ocrText = null;
+    }
+
+    public function closeCamera(): void
+    {
+        $this->cameraMode = false;
+    }
+
+    public function retakeCamera(): void
+    {
+        // Remove previously stored camera file
+        $cameraPath = session()->get('camera_receipt_path');
+        if ($cameraPath) {
+            Storage::disk('public')->delete($cameraPath);
+            session()->forget('camera_receipt_path');
+        }
+
+        $this->cameraPreviewUrl = null;
+        $this->previewUrl = null;
+        $this->cameraMode = true;
     }
 
     public function resetScanner(): void
     {
+        // Clean up camera capture if it was never saved
+        $cameraPath = session()->get('camera_receipt_path');
+        if ($cameraPath) {
+            Storage::disk('public')->delete($cameraPath);
+            session()->forget('camera_receipt_path');
+        }
+
         $this->receiptImage = null;
         $this->previewUrl = null;
         $this->ocrText = null;
@@ -132,6 +233,8 @@ class ReceiptScanner extends Component
         $this->category_id = null;
         $this->description = '';
         $this->showResultModal = false;
+        $this->cameraMode = false;
+        $this->cameraPreviewUrl = null;
     }
 
     public function getCategoriesProperty()

@@ -30,6 +30,9 @@ class TransactionManager extends Component
     public bool $showDeleteModal = false;
     public ?int $editingId = null;
     public ?int $deletingId = null;
+    public array $selectedTransactions = [];
+    public bool $selectAll = false;
+    public bool $showBulkDeleteModal = false;
 
     public string $type = 'expense';
     public ?int $category_id = null;
@@ -69,6 +72,20 @@ class TransactionManager extends Component
     public function updatingSearch(): void
     {
         $this->resetPage();
+    }
+
+    public function updatedSelectAll($value): void
+    {
+        if ($value) {
+            $this->selectedTransactions = $this->getFilteredTransactionsQuery()->pluck('id')->map(fn($id) => (string) $id)->toArray();
+        } else {
+            $this->selectedTransactions = [];
+        }
+    }
+
+    public function updatedSelectedTransactions(): void
+    {
+        $this->selectAll = false;
     }
 
     public function updatingFilterType(): void
@@ -183,7 +200,38 @@ class TransactionManager extends Component
         $this->showDeleteModal = false;
         $this->deletingId = null;
 
-        Flux::toast(text: 'Transaksi berhasil dihapus.', variant: 'success');
+        Flux::toast(text: __('Transaksi berhasil dihapus.'), variant: 'success');
+    }
+
+    public function confirmBulkDelete(): void
+    {
+        if (count($this->selectedTransactions) > 0) {
+            $this->showBulkDeleteModal = true;
+        }
+    }
+
+    public function bulkDelete(): void
+    {
+        if (empty($this->selectedTransactions)) {
+            return;
+        }
+
+        $transactions = Transaction::where('user_id', Auth::id())
+            ->whereIn('id', $this->selectedTransactions)
+            ->get();
+
+        foreach ($transactions as $transaction) {
+            if ($transaction->receipt_image) {
+                Storage::disk('public')->delete($transaction->receipt_image);
+            }
+            $transaction->delete();
+        }
+
+        $this->selectedTransactions = [];
+        $this->selectAll = false;
+        $this->showBulkDeleteModal = false;
+
+        Flux::toast(text: __('Transaksi yang dipilih berhasil dihapus.'), variant: 'success');
     }
 
     public function removeReceipt(): void
@@ -224,10 +272,9 @@ class TransactionManager extends Component
         return Category::forUser(Auth::id())->orderBy('name')->get();
     }
 
-    public function render()
+    protected function getFilteredTransactionsQuery()
     {
-        $transactions = Transaction::where('user_id', Auth::id())
-            ->with('category')
+        return Transaction::where('user_id', Auth::id())
             ->when($this->search, function ($query) {
                 $query->where(function ($q) {
                     $q->where('description', 'like', "%{$this->search}%")
@@ -237,7 +284,13 @@ class TransactionManager extends Component
             ->when($this->filterType, fn ($q) => $q->where('type', $this->filterType))
             ->when($this->filterCategory, fn ($q) => $q->where('category_id', $this->filterCategory))
             ->when($this->filterDateFrom, fn ($q) => $q->where('transaction_date', '>=', $this->filterDateFrom))
-            ->when($this->filterDateTo, fn ($q) => $q->where('transaction_date', '<=', $this->filterDateTo))
+            ->when($this->filterDateTo, fn ($q) => $q->where('transaction_date', '<=', $this->filterDateTo));
+    }
+
+    public function render()
+    {
+        $transactions = $this->getFilteredTransactionsQuery()
+            ->with('category')
             ->orderBy($this->sortBy, $this->sortDirection)
             ->paginate(15);
 

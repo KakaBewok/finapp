@@ -2,21 +2,21 @@
     {{-- Period Selector --}}
     <div class="flex flex-wrap items-center justify-between gap-4">
         <div>
-            <flux:heading size="xl">Dashboard Keuangan</flux:heading>
-            <flux:text class="mt-1">Ringkasan kondisi keuangan Anda.</flux:text>
+            <flux:heading size="xl">{{ __('Dashboard Keuangan') }}</flux:heading>
+            <flux:text class="mt-1">{{ __('Ringkasan kondisi keuangan Anda.') }}</flux:text>
         </div>
         <div class="flex gap-1 rounded-lg bg-zinc-100 p-1 dark:bg-zinc-700/50">
             <button wire:click="setPeriod('week')"
                 class="rounded-md px-3 py-1.5 text-sm font-medium transition-all {{ $period === 'week' ? 'bg-white shadow-sm dark:bg-zinc-600 dark:text-white' : 'text-zinc-500 hover:text-zinc-700 dark:text-zinc-400 dark:hover:text-zinc-200' }}">
-                Minggu Ini
+                {{ __('Minggu Ini') }}
             </button>
             <button wire:click="setPeriod('month')"
                 class="rounded-md px-3 py-1.5 text-sm font-medium transition-all {{ $period === 'month' ? 'bg-white shadow-sm dark:bg-zinc-600 dark:text-white' : 'text-zinc-500 hover:text-zinc-700 dark:text-zinc-400 dark:hover:text-zinc-200' }}">
-                Bulan Ini
+                {{ __('Bulan Ini') }}
             </button>
             <button wire:click="setPeriod('year')"
                 class="rounded-md px-3 py-1.5 text-sm font-medium transition-all {{ $period === 'year' ? 'bg-white shadow-sm dark:bg-zinc-600 dark:text-white' : 'text-zinc-500 hover:text-zinc-700 dark:text-zinc-400 dark:hover:text-zinc-200' }}">
-                Tahun Ini
+                {{ __('Tahun Ini') }}
             </button>
         </div>
     </div>
@@ -26,7 +26,7 @@
         {{-- Balance --}}
         <div class="rounded-xl border border-zinc-200 bg-gradient-to-br from-indigo-500 to-purple-600 p-5 text-white shadow-lg dark:border-zinc-700">
             <div class="flex items-center justify-between">
-                <flux:text class="!text-indigo-100">Saldo</flux:text>
+                <flux:text class="!text-indigo-100">{{ __('Saldo') }}</flux:text>
                 <div class="flex h-10 w-10 items-center justify-center rounded-lg bg-white/20">
                     <flux:icon name="wallet" class="size-5" />
                 </div>
@@ -34,13 +34,13 @@
             <div class="mt-3">
                 <span class="text-2xl font-bold">Rp {{ number_format($this->balance, 0, ',', '.') }}</span>
             </div>
-            <flux:text class="mt-1 !text-indigo-100">{{ $this->transactionCount }} transaksi</flux:text>
+            <flux:text class="mt-1 !text-indigo-100">{{ $this->transactionCount }} {{ __('transaksi') }}</flux:text>
         </div>
 
         {{-- Income --}}
         <div class="rounded-xl border border-zinc-200 bg-white p-5 shadow-sm dark:border-zinc-700 dark:bg-zinc-800">
             <div class="flex items-center justify-between">
-                <flux:text>Pemasukan</flux:text>
+                <flux:text>{{ __('Pemasukan') }}</flux:text>
                 <div class="flex h-10 w-10 items-center justify-center rounded-lg bg-emerald-100 dark:bg-emerald-900/30">
                     <flux:icon name="arrow-trending-up" class="size-5 text-emerald-600 dark:text-emerald-400" />
                 </div>
@@ -50,14 +50,14 @@
             </div>
             <div class="mt-1 flex items-center gap-1">
                 <span class="text-xs text-emerald-600 dark:text-emerald-400">↑</span>
-                <flux:text class="!text-xs">Pemasukan periode ini</flux:text>
+                <flux:text class="!text-xs">{{ __('Pemasukan periode ini') }}</flux:text>
             </div>
         </div>
 
         {{-- Expense --}}
         <div class="rounded-xl border border-zinc-200 bg-white p-5 shadow-sm dark:border-zinc-700 dark:bg-zinc-800">
             <div class="flex items-center justify-between">
-                <flux:text>Pengeluaran</flux:text>
+                <flux:text>{{ __('Pengeluaran') }}</flux:text>
                 <div class="flex h-10 w-10 items-center justify-center rounded-lg bg-red-100 dark:bg-red-900/30">
                     <flux:icon name="arrow-trending-down" class="size-5 text-red-600 dark:text-red-400" />
                 </div>
@@ -67,14 +67,14 @@
             </div>
             <div class="mt-1 flex items-center gap-1">
                 <span class="text-xs text-red-600 dark:text-red-400">↓</span>
-                <flux:text class="!text-xs">Pengeluaran periode ini</flux:text>
+                <flux:text class="!text-xs">{{ __('Pengeluaran periode ini') }}</flux:text>
             </div>
         </div>
 
         {{-- Transaction Count --}}
         <div class="rounded-xl border border-zinc-200 bg-white p-5 shadow-sm dark:border-zinc-700 dark:bg-zinc-800">
             <div class="flex items-center justify-between">
-                <flux:text>Total Transaksi</flux:text>
+                <flux:text>{{ __('Total Transaksi') }}</flux:text>
                 <div class="flex h-10 w-10 items-center justify-center rounded-lg bg-blue-100 dark:bg-blue-900/30">
                     <flux:icon name="receipt-percent" class="size-5 text-blue-600 dark:text-blue-400" />
                 </div>
@@ -82,7 +82,7 @@
             <div class="mt-3">
                 <span class="text-2xl font-bold text-zinc-900 dark:text-white">{{ $this->transactionCount }}</span>
             </div>
-            <flux:text class="mt-1 !text-xs">Transaksi tercatat</flux:text>
+            <flux:text class="mt-1 !text-xs">{{ __('Transaksi tercatat') }}</flux:text>
         </div>
     </div>
 
@@ -90,9 +90,9 @@
         {{-- Recent Transactions --}}
         <div class="rounded-xl border border-zinc-200 bg-white p-5 shadow-sm dark:border-zinc-700 dark:bg-zinc-800 lg:col-span-3">
             <div class="mb-4 flex items-center justify-between">
-                <flux:heading size="lg">Transaksi Terakhir</flux:heading>
+                <flux:heading size="lg">{{ __('Transaksi Terakhir') }}</flux:heading>
                 <flux:button size="sm" variant="ghost" :href="route('transactions')" wire:navigate>
-                    Lihat Semua
+                    {{ __('Lihat Semua') }}
                 </flux:button>
             </div>
 
@@ -101,9 +101,9 @@
                     <div class="flex h-16 w-16 items-center justify-center rounded-full bg-zinc-100 dark:bg-zinc-700">
                         <flux:icon name="inbox" class="size-8 text-zinc-400" />
                     </div>
-                    <flux:text class="mt-3">Belum ada transaksi.</flux:text>
+                    <flux:text class="mt-3">{{ __('Belum ada transaksi.') }}</flux:text>
                     <flux:button size="sm" variant="primary" :href="route('transactions')" wire:navigate class="mt-3">
-                        Tambah Transaksi
+                        {{ __('Tambah Transaksi') }}
                     </flux:button>
                 </div>
             @else
@@ -117,7 +117,7 @@
                                 </div>
                                 <div>
                                     <div class="font-medium text-zinc-900 dark:text-white">
-                                        {{ $tx->description ?? $tx->merchant ?? $tx->category?->name ?? 'Transaksi' }}
+                                        {{ $tx->description ?? $tx->merchant ?? $tx->category?->name ?? __('Transaksi') }}
                                     </div>
                                     <flux:text class="!text-xs">
                                         {{ $tx->transaction_date->format('d M Y') }}
@@ -139,15 +139,15 @@
             {{-- Budget Overview --}}
             <div class="rounded-xl border border-zinc-200 bg-white p-5 shadow-sm dark:border-zinc-700 dark:bg-zinc-800">
                 <div class="mb-4 flex items-center justify-between">
-                    <flux:heading size="lg">Anggaran Bulan Ini</flux:heading>
+                    <flux:heading size="lg">{{ __('Anggaran Bulan Ini') }}</flux:heading>
                     <flux:button size="sm" variant="ghost" :href="route('budgets')" wire:navigate>
-                        Kelola
+                        {{ __('Kelola') }}
                     </flux:button>
                 </div>
 
                 @if($this->budgetOverview->isEmpty())
                     <div class="py-4 text-center">
-                        <flux:text>Belum ada anggaran.</flux:text>
+                        <flux:text>{{ __('Belum ada data.') }}</flux:text>
                     </div>
                 @else
                     <div class="space-y-4">
@@ -175,21 +175,46 @@
                 @endif
             </div>
 
-            {{-- Top Categories --}}
+            {{-- Top Expense Categories --}}
             <div class="rounded-xl border border-zinc-200 bg-white p-5 shadow-sm dark:border-zinc-700 dark:bg-zinc-800">
-                <flux:heading size="lg" class="mb-4">Pengeluaran Terbesar</flux:heading>
+                <flux:heading size="lg" class="mb-4">{{ __('Pengeluaran Terbesar (Kategori)') }}</flux:heading>
 
-                @if($this->topCategories->isEmpty())
+                @if($this->topExpenseCategories->isEmpty())
                     <div class="py-4 text-center">
-                        <flux:text>Belum ada data.</flux:text>
+                        <flux:text>{{ __('Belum ada data.') }}</flux:text>
                     </div>
                 @else
                     <div class="space-y-3">
-                        @foreach($this->topCategories as $cat)
+                        @foreach($this->topExpenseCategories as $cat)
                             <div class="flex items-center justify-between">
                                 <div class="flex items-center gap-2.5">
                                     <span class="text-lg">{{ $cat->category->icon ?? '📦' }}</span>
-                                    <span class="text-sm font-medium text-zinc-700 dark:text-zinc-300">{{ $cat->category->name ?? 'Lainnya' }}</span>
+                                    <span class="text-sm font-medium text-zinc-700 dark:text-zinc-300">{{ $cat->category->name ?? __('Lainnya') }}</span>
+                                </div>
+                                <span class="text-sm font-semibold text-zinc-900 dark:text-white">
+                                    Rp {{ number_format($cat->total, 0, ',', '.') }}
+                                </span>
+                            </div>
+                        @endforeach
+                    </div>
+                @endif
+            </div>
+
+            {{-- Top Income Categories --}}
+            <div class="rounded-xl border border-zinc-200 bg-white p-5 shadow-sm dark:border-zinc-700 dark:bg-zinc-800">
+                <flux:heading size="lg" class="mb-4">{{ __('Pemasukan Terbesar (Kategori)') }}</flux:heading>
+
+                @if($this->topIncomeCategories->isEmpty())
+                    <div class="py-4 text-center">
+                        <flux:text>{{ __('Belum ada data.') }}</flux:text>
+                    </div>
+                @else
+                    <div class="space-y-3">
+                        @foreach($this->topIncomeCategories as $cat)
+                            <div class="flex items-center justify-between">
+                                <div class="flex items-center gap-2.5">
+                                    <span class="text-lg">{{ $cat->category->icon ?? '💰' }}</span>
+                                    <span class="text-sm font-medium text-zinc-700 dark:text-zinc-300">{{ $cat->category->name ?? __('Lainnya') }}</span>
                                 </div>
                                 <span class="text-sm font-semibold text-zinc-900 dark:text-white">
                                     Rp {{ number_format($cat->total, 0, ',', '.') }}
